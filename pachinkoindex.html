@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>カラフルパチンコゲーム</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game-container">
+        <h1>カラフルパチンコゲーム</h1>
+        <div id="scoreboard">
+            <span id="balls">球数: 100</span>
+        </div>
+        <canvas id="pachinko-board" width="400" height="600"></canvas>
+        <div style="margin:6px 0 0 0;">
+            <div id="power-gauge-wrapper" style="height:16px; width:180px; display:inline-block; background:#222; border-radius:10px; box-shadow:0 0 8px #00fff7 inset; vertical-align:middle;">
+                <div id="power-gauge" style="height:100%; width:0; background:linear-gradient(90deg,#fffa00,#ff00c8); border-radius:10px;"></div>
+            </div>
+            <button id="launch-btn" style="font-size:13px; padding:2px 12px; margin-left:10px; height:26px; vertical-align:middle;">球を発射</button>
+        </div>
+        <div id="message"></div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
