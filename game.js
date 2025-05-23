@@ -252,7 +252,7 @@ const tulips = [
 ];
 const jackpot = { x: 200, y: 530, r: 22, open: false, timer: 0 };
 const loseHole = { x: 200, y: 570, r: 30 };
-const slotStartPocket = { x: 200, y: 40, r: 20, color: '#32CD32' }; // Example: LimeGreen
+const slotStartPocket = { x: 200, y: 300, r: 20, color: '#32CD32' }; // Example: LimeGreen
 
 // 釘（ピン）の三角格子配置
 const pins = [];
