@@ -207,9 +207,41 @@ function seJackpotPSG() {
     setTimeout(() => playPSGSquare(2093, 0.18, 0.14, true), 220);
 }
 
+// Sound for ball hitting the slot start pocket
+function seSlotStartPocketHit() {
+    playPSGSquare(600, 0.10, 0.18, true); // Example: A clear, slightly higher pitched sound
+    setTimeout(() => playPSGSquare(900, 0.08, 0.15, false), 80);
+}
+
+// Sound for slot spinning (can be called multiple times or made more complex)
+function seSlotSpin() {
+    playPSGSquare(300 + Math.random() * 200, 0.07, 0.10, false); // Rapid, varying pitch
+}
+
+// Sound for the fighter jet win animation sequence
+function seSlotWinFighterJet() {
+    // Ascending triumphant sound
+    playPSGSquare(880, 0.15, 0.20, true); // A4
+    setTimeout(() => playPSGSquare(1046.50, 0.15, 0.18, true), 120); // C6
+    setTimeout(() => playPSGSquare(1318.51, 0.20, 0.16, true), 240); // E6
+    setTimeout(() => playPSGSquare(1567.98, 0.30, 0.19, true), 360); // G6 (longer)
+}
+
+// Sound for slot loss
+function seSlotLose() {
+    playPSGSquare(400, 0.15, 0.15, false);
+    setTimeout(() => playPSGSquare(300, 0.20, 0.12, false), 160); // Descending, short
+}
+
 
 let balls = 100;
 let gameActive = true;
+let isSlotAnimationPlaying = false;
+let slotLotteryWin = false; // To store the win/loss result for the animation loop
+let animationStage = 0; // 0: initial, 1: slot_start, 2: main_event (win/loss), 3: finished
+let animationStartTime = 0;
+let currentAnimationDuration = 0;
+
 
 // 盤面の定義
 const tulips = [
@@ -220,6 +252,7 @@ const tulips = [
 ];
 const jackpot = { x: 200, y: 530, r: 22, open: false, timer: 0 };
 const loseHole = { x: 200, y: 570, r: 30 };
+const slotStartPocket = { x: 200, y: 40, r: 20, color: '#32CD32' }; // Example: LimeGreen
 
 // 釘（ピン）の三角格子配置
 const pins = [];
@@ -374,6 +407,18 @@ function drawBoard() {
     ctx.globalAlpha = 1.0;
     ctx.strokeStyle = '#fff';
     ctx.stroke();
+
+    // Draw Slot Start Pocket
+    ctx.beginPath();
+    ctx.arc(slotStartPocket.x, slotStartPocket.y, slotStartPocket.r, 0, Math.PI * 2);
+    ctx.fillStyle = slotStartPocket.color;
+    ctx.globalAlpha = 0.85; // Consistent with other pockets
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+    ctx.strokeStyle = '#fff'; // White stroke
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
     ctx.restore();
     // ガイドレール描画
     const rail = getGuideRailParams();
@@ -624,7 +669,18 @@ function updateBalls() {
             messageDiv.textContent = '究極の大当たり！+500発';
             ball.alive = false;
             checkGameEnd();
+            if (!ball.alive) continue;
         }
+
+        // スロットスタート入賞口判定
+        if (ball.alive && Math.hypot(ball.x - slotStartPocket.x, ball.y - slotStartPocket.y) < slotStartPocket.r - 2) {
+            ball.alive = false; // Ball is consumed
+            seSlotStartPocketHit(); // Sound for ball entering slot pocket
+            // messageDiv.textContent = 'スロットスタート！'; // Removed/Commented out as per refinement
+            triggerSlotLottery(); // This will set isSlotAnimationPlaying = true and animationStage = 0
+            if (!ball.alive) continue; // Skip further physics for this ball
+        }
+
         // はずれ口
         if (ball.alive && ball.y > loseHole.y - loseHole.r) {
             messageDiv.textContent = 'はずれ...';
@@ -636,17 +692,171 @@ function updateBalls() {
     ballsInPlay = ballsInPlay.filter(b => b.alive && b.y < 650);
 }
 
+// スロット抽選と結果表示
+function drawSlotStartAnimation(progress) {
+    const alpha = Math.sin(progress * Math.PI); // Fades in and out
+    ctx.fillStyle = `rgba(255, 255, 0, ${alpha})`; // Yellow, fading
+    ctx.font = '30px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('SLOT START!', canvas.width / 2, canvas.height / 2 - 40);
+    const dots = ".".repeat(Math.floor(progress * 3) + 1);
+    ctx.font = '20px Arial';
+    ctx.fillText(`Reels Spinning${dots}`, canvas.width / 2, canvas.height / 2);
+}
+
+function drawFighterJetAnimation(progress) {
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 2;
+    ctx.fillStyle = 'white'; // For text
+    ctx.font = '20px Arial';
+    ctx.textAlign = 'center';
+
+    // Jet (simple triangle)
+    const jetX = canvas.width / 2 + (1 - progress) * 100; // Moves from right to center
+    const jetY = canvas.height / 2 - 50;
+    ctx.beginPath();
+    ctx.moveTo(jetX, jetY);
+    ctx.lineTo(jetX - 15, jetY + 10);
+    ctx.lineTo(jetX + 15, jetY + 10);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Base (simple square)
+    ctx.strokeRect(canvas.width / 2 - 20, canvas.height / 2 + 30, 40, 20);
+
+    if (progress > 0.7) { // Explosion
+        const explosionProgress = (progress - 0.7) / 0.3;
+        ctx.fillStyle = `rgba(255, 0, 0, ${Math.sin(explosionProgress * Math.PI)})`;
+        ctx.beginPath();
+        ctx.arc(canvas.width / 2, canvas.height / 2 + 40, 30 * explosionProgress, 0, Math.PI * 2);
+        ctx.fill();
+        
+        if (progress > 0.85) { // Delay message slightly
+            ctx.fillStyle = 'yellow'; // Make message stand out
+            ctx.font = '22px Arial';
+            ctx.fillText('ENEMY BASE DESTROYED!', canvas.width / 2, canvas.height / 2 + 100);
+        }
+    }
+}
+
+function drawSlotLoseAnimation(progress) {
+    const alpha = Math.sin(progress * Math.PI);
+    const scale = 1 - (progress * 0.2); // Text slightly shrinks
+    const fontSize = Math.floor(30 * scale);
+    ctx.font = `${fontSize}px Arial`;
+    ctx.fillStyle = `rgba(128, 128, 128, ${alpha})`; // Grey
+    ctx.textAlign = 'center';
+    ctx.fillText('TRY AGAIN...', canvas.width / 2, canvas.height / 2);
+}
+
+function triggerSlotLottery() {
+    const isWin = Math.random() < (1 / 256);
+    slotLotteryWin = isWin; 
+    isSlotAnimationPlaying = true; 
+    animationStage = 0; // Initialize animation sequence
+    
+    // Initial messages can be set here or managed by runSlotAnimationLoop stages
+    if (isWin) {
+        console.log("Lottery Result: WIN!");
+    } else {
+        console.log("Lottery Result: LOSS");
+    }
+}
+
+function runSlotAnimationLoop() {
+    if (!isSlotAnimationPlaying) return; 
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'rgba(0,0,0,0.8)'; // Dark overlay for animation mode
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const now = Date.now();
+    let progress = (now - animationStartTime) / currentAnimationDuration;
+    progress = Math.min(progress, 1); // Cap progress at 1
+
+    switch (animationStage) {
+        case 0: // Initial call to start the sequence
+            animationStage = 1;
+            animationStartTime = now;
+            currentAnimationDuration = 1000; // 1 second for slot start animation
+            seSlotSpin(); // Play spin sound as stage 1 starts
+            messageDiv.textContent = 'Spinning!'; 
+            // Fall through to draw the first frame of stage 1
+        case 1: // Slot Start Animation
+            drawSlotStartAnimation(progress);
+            if (progress >= 1) {
+                animationStage = 2;
+                animationStartTime = now;
+                seSlotSpin(); // Sound for reels "locking in"
+                if (slotLotteryWin) {
+                    currentAnimationDuration = 3000; 
+                    messageDiv.textContent = '大当り判定中...'; 
+                    seSlotWinFighterJet(); // Play win sound as animation starts
+                } else {
+                    currentAnimationDuration = 2000; 
+                    messageDiv.textContent = '残念...';
+                    seSlotLose(); // Play lose sound as animation starts
+                }
+                progress = 0; 
+            }
+            break;
+        case 2: // Main Event (Win or Lose Animation)
+            if (slotLotteryWin) {
+                drawFighterJetAnimation(progress);
+            } else {
+                drawSlotLoseAnimation(progress);
+            }
+            if (progress >= 1) {
+                animationStage = 3; // Mark as finished
+            }
+            break;
+        case 3: // Finished
+            if (slotLotteryWin) {
+                balls += 1000;
+                ballsDisplay.textContent = `球数: ${balls}`;
+                messageDiv.textContent = '大当たり！1000発獲得！'; // "Big Win! 1000 balls acquired!"
+                seJackpotPSG(); // Play a jackpot sound, maybe a more elaborate one later
+                checkGameEnd(); // Check for game clear condition
+            } else {
+                messageDiv.textContent = 'また挑戦してね！'; // "Try again!" or similar for loss
+            }
+            isSlotAnimationPlaying = false;
+            animationStage = 0; // Reset for next time
+            // messageDiv.textContent is now set by the win/loss logic above, so no need to clear it here explicitly unless desired.
+            // The main gameLoop will take over on the next rAF call.
+            return; // Stop this animation loop
+    }
+    requestAnimationFrame(runSlotAnimationLoop); // Continue animation
+}
+
 function gameLoop() {
-    if (!gameActive) return;
+    if (isSlotAnimationPlaying) {
+        // If animation is playing, and it's the initial stage (0), 
+        // kick off the animation loop. It will then self-perpetuate via rAF.
+        if (animationStage === 0) { 
+            requestAnimationFrame(runSlotAnimationLoop);
+        }
+        // We still need to request the next frame for gameLoop itself,
+        // so it can check the isSlotAnimationPlaying flag again.
+        requestAnimationFrame(gameLoop); 
+        return; 
+    }
+
+    if (!gameActive) {
+        requestAnimationFrame(gameLoop); // Keep checking if game becomes active again
+        return;
+    }
+
     updateTulip();
     updateJackpot();
     updateBalls();
     drawBoard();
-    requestAnimationFrame(gameLoop);
+    requestAnimationFrame(gameLoop); // Continue normal game loop if not animating
 }
 
-drawBoard();
-gameLoop();
+drawBoard(); // Initial draw
+requestAnimationFrame(gameLoop); // Start the main loop
+
 // パワーゲージ式発射イベント
 launchBtn.addEventListener('mousedown', e => {
     ensureBGMStart();
