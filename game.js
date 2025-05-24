@@ -238,9 +238,24 @@ let balls = 100;
 let gameActive = true;
 let isSlotAnimationPlaying = false;
 let slotLotteryWin = false; // To store the win/loss result for the animation loop
-let animationStage = 0; // 0: initial, 1: slot_start, 2: main_event (win/loss), 3: finished
+
+// Animation Stage Constants
+const SLOT_ANIM_STAGE_INITIAL_SETUP = 0;
+const SLOT_ANIM_STAGE_INTRO = 1;         // ~5s
+const SLOT_ANIM_STAGE_APPROACH = 2;      // ~10s
+const SLOT_ANIM_STAGE_OBSTACLE = 3;      // ~10s
+const SLOT_ANIM_STAGE_CLIMAX = 4;        // ~4s
+const SLOT_ANIM_STAGE_OUTRO = 5;         // ~1s
+const SLOT_ANIM_STAGE_FINISHED = 6;
+
+let animationStage = SLOT_ANIM_STAGE_INITIAL_SETUP; // Initialize with the setup stage
 let animationStartTime = 0;
 let currentAnimationDuration = 0;
+
+// Flags for one-shot sounds within stages
+let playedMidApproachSound = false;
+let playedObstacleSound1 = false;
+let playedObstacleSound2 = false;
 
 
 // 盤面の定義
@@ -749,13 +764,143 @@ function drawSlotLoseAnimation(progress) {
     ctx.fillText('TRY AGAIN...', canvas.width / 2, canvas.height / 2);
 }
 
+// Placeholder animation drawing functions
+function drawSlotIntroAnim(progress) {
+    ctx.fillStyle = 'white';
+    ctx.font = '18px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('FIGHTER JET PREPARING...', canvas.width / 2, canvas.height / 2 - 60);
+
+    // Simple jet model (rectangle)
+    const jetWidth = 20;
+    const jetHeight = 30;
+    const jetX = canvas.width / 2 - jetWidth / 2;
+    // Start from bottom, move towards center based on progress
+    const jetY = canvas.height - (canvas.height / 2 + jetHeight / 2) * progress;
+
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(jetX, jetY, jetWidth, jetHeight);
+    ctx.fillText('LAUNCH!', jetX + jetWidth / 2, jetY + jetHeight + 20);
+}
+
+function drawSlotApproachAnim(progress) {
+    ctx.fillStyle = 'white';
+    ctx.font = '18px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('APPROACHING ENEMY BASE...', canvas.width / 2, canvas.height / 2 - 80);
+
+    const jetSize = 15;
+    // Jet moves from left to right-ish, or appears to get closer
+    const jetX = (canvas.width * 0.2) + (canvas.width * 0.6 * progress);
+    const jetY = canvas.height / 2;
+    
+    ctx.strokeStyle = 'white';
+    ctx.strokeRect(jetX - jetSize/2, jetY - jetSize/2, jetSize, jetSize); // Simple jet
+
+    // Distant base (small square)
+    const baseSize = 10;
+    ctx.strokeRect(canvas.width * 0.85 - baseSize/2, canvas.height/2 - baseSize/2, baseSize, baseSize);
+    ctx.fillText('Base Detected', canvas.width * 0.85, canvas.height/2 + 20);
+}
+
+function drawSlotObstacleAnim(progress) {
+    ctx.fillStyle = 'white';
+    ctx.font = '18px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('EVADING ENEMY FIRE!', canvas.width / 2, canvas.height / 2 - 100);
+
+    const jetSize = 20;
+    const jetX = canvas.width / 2; // Jet stays somewhat central
+    const jetY = canvas.height * 0.3;
+    ctx.strokeStyle = 'white';
+    ctx.strokeRect(jetX - jetSize/2, jetY - jetSize/2, jetSize, jetSize);
+
+    // "Bullets" - their positions change with progress to create sense of movement/danger
+    for (let i = 0; i < 5; i++) {
+        ctx.beginPath();
+        const bulletX = (canvas.width * Math.random()) * (1 - progress) + (canvas.width / 2) * progress; // Converge towards center
+        const bulletY = canvas.height * (i / 5) + ( (progress * 100) % (canvas.height/5) );
+        ctx.arc(bulletX, bulletY % canvas.height, 3, 0, Math.PI * 2);
+        ctx.fillStyle = 'red';
+        ctx.fill();
+    }
+}
+
+function drawSlotClimaxAnim(progress, isWin) {
+    ctx.fillStyle = 'white';
+    ctx.font = '20px Arial';
+    ctx.textAlign = 'center';
+    
+    const jetSize = 25;
+    const jetX = canvas.width / 2;
+    const jetY = canvas.height * 0.3;
+    ctx.strokeStyle = 'white';
+    ctx.strokeRect(jetX - jetSize/2, jetY - jetSize/2, jetSize, jetSize); // Jet
+
+    const baseSize = 30;
+    const baseX = canvas.width / 2 - baseSize/2;
+    const baseY = canvas.height * 0.7 - baseSize/2;
+    ctx.strokeRect(baseX, baseY, baseSize, baseSize); // Base
+
+    // Missile
+    if (progress > 0.1 && progress < 0.8) {
+        const missileY = jetY + (baseY - jetY) * ((progress - 0.1) / 0.7);
+        ctx.fillStyle = 'cyan';
+        ctx.fillRect(jetX - 2, missileY - 5, 4, 10);
+        ctx.fillText(isWin ? "TARGET LOCKED!" : "TRYING TO HIT...", canvas.width / 2, canvas.height / 2);
+    }
+
+    if (progress > 0.8) {
+        if (isWin) {
+            ctx.fillStyle = 'orange';
+            ctx.beginPath();
+            ctx.arc(baseX + baseSize/2, baseY + baseSize/2, baseSize * progress * 1.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = 'red';
+            ctx.font = '28px Arial';
+            ctx.fillText('DIRECT HIT!', canvas.width / 2, canvas.height / 2 + 40);
+        } else {
+            // Jet hit or missile misses
+            ctx.beginPath();
+            ctx.moveTo(jetX - jetSize, jetY - jetSize); // "X" over jet
+            ctx.lineTo(jetX + jetSize, jetY + jetSize);
+            ctx.moveTo(jetX + jetSize, jetY - jetSize);
+            ctx.lineTo(jetX - jetSize, jetY + jetSize);
+            ctx.strokeStyle = 'red';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.fillStyle = 'red';
+            ctx.font = '28px Arial';
+            ctx.fillText('MISSION FAILED!', canvas.width / 2, canvas.height / 2 + 40);
+        }
+    }
+}
+
+function drawSlotOutroAnim(progress, isWin) {
+    ctx.textAlign = 'center';
+    ctx.font = '40px Arial';
+    if (isWin) {
+        ctx.fillStyle = 'yellow';
+        ctx.fillText('!!! JACKPOT !!!', canvas.width / 2, canvas.height / 2);
+    } else {
+        ctx.fillStyle = 'grey';
+        ctx.fillText('--- LOSS ---', canvas.width / 2, canvas.height / 2);
+    }
+    // MessageDiv will show ball count / detailed message
+}
+
 function triggerSlotLottery() {
     const isWin = Math.random() < (1 / 256);
     slotLotteryWin = isWin; 
     isSlotAnimationPlaying = true; 
-    animationStage = 0; // Initialize animation sequence
+    animationStage = SLOT_ANIM_STAGE_INITIAL_SETUP; // Initialize animation sequence
     
-    // Initial messages can be set here or managed by runSlotAnimationLoop stages
+    // Reset sound flags for the new animation sequence
+    playedMidApproachSound = false;
+    playedObstacleSound1 = false;
+    playedObstacleSound2 = false;
+
     if (isWin) {
         console.log("Lottery Result: WIN!");
     } else {
@@ -769,61 +914,104 @@ function runSlotAnimationLoop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = 'rgba(0,0,0,0.8)'; // Dark overlay for animation mode
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    ctx.fillStyle = 'white'; // Default text color for placeholders
+    ctx.font = '20px Arial';
+    ctx.textAlign = 'center';
 
     const now = Date.now();
     let progress = (now - animationStartTime) / currentAnimationDuration;
     progress = Math.min(progress, 1); // Cap progress at 1
 
     switch (animationStage) {
-        case 0: // Initial call to start the sequence
-            animationStage = 1;
+        case SLOT_ANIM_STAGE_INITIAL_SETUP:
+            animationStage = SLOT_ANIM_STAGE_INTRO;
             animationStartTime = now;
-            currentAnimationDuration = 1000; // 1 second for slot start animation
-            seSlotSpin(); // Play spin sound as stage 1 starts
-            messageDiv.textContent = 'Spinning!'; 
-            // Fall through to draw the first frame of stage 1
-        case 1: // Slot Start Animation
-            drawSlotStartAnimation(progress);
+            currentAnimationDuration = 5000; // Intro: ~5 seconds
+            messageDiv.textContent = 'Slot sequence initiated...';
+            seLaunchPSG(); // Jet launch sound
+            break; 
+
+        case SLOT_ANIM_STAGE_INTRO:
+            drawSlotIntroAnim(progress);
             if (progress >= 1) {
-                animationStage = 2;
+                animationStage = SLOT_ANIM_STAGE_APPROACH;
                 animationStartTime = now;
-                seSlotSpin(); // Sound for reels "locking in"
-                if (slotLotteryWin) {
-                    currentAnimationDuration = 3000; 
-                    messageDiv.textContent = '大当り判定中...'; 
-                    seSlotWinFighterJet(); // Play win sound as animation starts
-                } else {
-                    currentAnimationDuration = 2000; 
-                    messageDiv.textContent = '残念...';
-                    seSlotLose(); // Play lose sound as animation starts
-                }
-                progress = 0; 
+                currentAnimationDuration = 10000; // Approach: ~10 seconds
+                progress = 0;
+                messageDiv.textContent = 'Approaching target...';
+                seSlotSpin(); // Sound for starting approach/engine
             }
             break;
-        case 2: // Main Event (Win or Lose Animation)
-            if (slotLotteryWin) {
-                drawFighterJetAnimation(progress);
-            } else {
-                drawSlotLoseAnimation(progress);
+
+        case SLOT_ANIM_STAGE_APPROACH: 
+            drawSlotApproachAnim(progress);
+            if (!playedMidApproachSound && progress > 0.5) {
+              seSlotSpin(); // Mid-approach engine sound
+              playedMidApproachSound = true;
             }
             if (progress >= 1) {
-                animationStage = 3; // Mark as finished
+                animationStage = SLOT_ANIM_STAGE_OBSTACLE;
+                animationStartTime = now;
+                currentAnimationDuration = 10000; // Obstacle: ~10 seconds
+                progress = 0;
+                messageDiv.textContent = 'Encountering resistance...';
+                seHitPSG(); // Sound for starting obstacle phase
+                playedMidApproachSound = false; // Reset for next time
             }
             break;
-        case 3: // Finished
+
+        case SLOT_ANIM_STAGE_OBSTACLE: 
+            drawSlotObstacleAnim(progress);
+            if (!playedObstacleSound1 && progress > 0.33) {
+              seHitPSG(); // First danger sound
+              playedObstacleSound1 = true;
+            }
+            if (!playedObstacleSound2 && progress > 0.66) {
+              seHitPSG(); // Second danger sound
+              playedObstacleSound2 = true;
+            }
+            if (progress >= 1) {
+                animationStage = SLOT_ANIM_STAGE_CLIMAX;
+                animationStartTime = now;
+                currentAnimationDuration = 4000; // Climax: ~4 seconds
+                progress = 0;
+                messageDiv.textContent = 'Climax moment!';
+                if (slotLotteryWin) { seSlotWinFighterJet(); } else { seSlotLose(); } // Climax sounds
+                playedObstacleSound1 = false; // Reset flags
+                playedObstacleSound2 = false;
+            }
+            break;
+
+        case SLOT_ANIM_STAGE_CLIMAX: 
+            drawSlotClimaxAnim(progress, slotLotteryWin);
+            if (progress >= 1) {
+                animationStage = SLOT_ANIM_STAGE_OUTRO;
+                animationStartTime = now;
+                currentAnimationDuration = 1000; // Outro: ~1 second
+                progress = 0;
+            }
+            break;
+
+        case SLOT_ANIM_STAGE_OUTRO: 
+            drawSlotOutroAnim(progress, slotLotteryWin);
+            if (progress >= 1) {
+                animationStage = SLOT_ANIM_STAGE_FINISHED;
+            }
+            break;
+
+        case SLOT_ANIM_STAGE_FINISHED:
             if (slotLotteryWin) {
                 balls += 1000;
                 ballsDisplay.textContent = `球数: ${balls}`;
-                messageDiv.textContent = '大当たり！1000発獲得！'; // "Big Win! 1000 balls acquired!"
-                seJackpotPSG(); // Play a jackpot sound, maybe a more elaborate one later
-                checkGameEnd(); // Check for game clear condition
+                messageDiv.textContent = '大当たり！1000発獲得！';
+                seJackpotPSG(); 
+                checkGameEnd();
             } else {
-                messageDiv.textContent = 'また挑戦してね！'; // "Try again!" or similar for loss
+                messageDiv.textContent = 'また挑戦してね！';
             }
             isSlotAnimationPlaying = false;
-            animationStage = 0; // Reset for next time
-            // messageDiv.textContent is now set by the win/loss logic above, so no need to clear it here explicitly unless desired.
-            // The main gameLoop will take over on the next rAF call.
+            animationStage = SLOT_ANIM_STAGE_INITIAL_SETUP; // Reset for next time
             return; // Stop this animation loop
     }
     requestAnimationFrame(runSlotAnimationLoop); // Continue animation
@@ -831,19 +1019,15 @@ function runSlotAnimationLoop() {
 
 function gameLoop() {
     if (isSlotAnimationPlaying) {
-        // If animation is playing, and it's the initial stage (0), 
-        // kick off the animation loop. It will then self-perpetuate via rAF.
-        if (animationStage === 0) { 
+        if (animationStage === SLOT_ANIM_STAGE_INITIAL_SETUP) { 
             requestAnimationFrame(runSlotAnimationLoop);
         }
-        // We still need to request the next frame for gameLoop itself,
-        // so it can check the isSlotAnimationPlaying flag again.
         requestAnimationFrame(gameLoop); 
         return; 
     }
 
     if (!gameActive) {
-        requestAnimationFrame(gameLoop); // Keep checking if game becomes active again
+        requestAnimationFrame(gameLoop); 
         return;
     }
 
@@ -851,11 +1035,11 @@ function gameLoop() {
     updateJackpot();
     updateBalls();
     drawBoard();
-    requestAnimationFrame(gameLoop); // Continue normal game loop if not animating
+    requestAnimationFrame(gameLoop); 
 }
 
-drawBoard(); // Initial draw
-requestAnimationFrame(gameLoop); // Start the main loop
+drawBoard(); 
+requestAnimationFrame(gameLoop); 
 
 // パワーゲージ式発射イベント
 launchBtn.addEventListener('mousedown', e => {
